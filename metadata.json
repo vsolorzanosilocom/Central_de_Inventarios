@@ -1,0 +1,6 @@
+{
+  "name": "Sistema Central de Inventarios - SILOCOM C.A.",
+  "description": "Sistema central unificado de inventarios y registro de activos para Silocom C.A. con panel de disponibilidad y formularios de registro.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
