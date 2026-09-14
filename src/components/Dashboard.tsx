@@ -25,6 +25,22 @@ import {
   Boxes,
 } from 'lucide-react';
 
+// Helper para normalizar y extraer valores numéricos de cantidad de forma segura
+function parseQuantity(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'number') {
+    return isNaN(val) ? null : val;
+  }
+  const str = String(val).trim();
+  if (str === '' || str === '-' || str === '—' || str.toLowerCase() === 'n/a') {
+    return null;
+  }
+  const cleaned = str.replace(/[^\d.,-]/g, '').replace(',', '.');
+  if (cleaned === '' || cleaned === '-') return null;
+  const num = Number(cleaned);
+  return isNaN(num) ? null : num;
+}
+
 export const Dashboard: React.FC = () => {
   const [selectedModule, setSelectedModule] = useState<InventoryModule>('CONSUMIBLES');
   const [selectedSubModule, setSelectedSubModule] = useState<InventorySubModule>('PRINCIPAL');
@@ -94,12 +110,79 @@ export const Dashboard: React.FC = () => {
 
   // Identificar el índice de la columna de cantidad / disponibilidad
   const quantityColIndex = useMemo(() => {
-    if (!data?.headers) return -1;
-    const qtyKeywords = ['disponible', 'cantidad', 'cantidad en almacén', 'cantidad disponible'];
-    return data.headers.findIndex((h) =>
-      qtyKeywords.some((kw) => h.toLowerCase().trim().includes(kw))
+    if (!data?.headers || data.headers.length === 0) return -1;
+
+    // Normalizador de texto (minúsculas, sin acentos ni tildes, sin espacios extremos)
+    const normalize = (txt: string) =>
+      txt
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+
+    const normalizedHeaders = data.headers.map(normalize);
+
+    // 1. Palabras clave primarias de cantidad / stock / disponibilidad
+    const primaryKeywords = [
+      'disponible',
+      'disponib',
+      'cantidad',
+      'cant',
+      'existencia',
+      'existencias',
+      'stock',
+      'equipos',
+      'equipo',
+      'uds',
+    ];
+
+    let foundIdx = normalizedHeaders.findIndex((h) =>
+      primaryKeywords.some((kw) => h.includes(kw))
     );
-  }, [data?.headers]);
+    if (foundIdx !== -1) return foundIdx;
+
+    // 2. Palabras clave secundarias de almacén (ej. "1 ALMACEN PRINCIPAL", "4 ALMACEN REGIONAL")
+    const secondaryKeywords = ['almacen', 'deposito', 'bodega'];
+    foundIdx = normalizedHeaders.findIndex((h) =>
+      secondaryKeywords.some((kw) => h.includes(kw))
+    );
+    if (foundIdx !== -1) return foundIdx;
+
+    // 3. Regla estructural de reserva para Routers
+    if (selectedModule === 'ROUTER') {
+      if (selectedSubModule === 'PRINCIPAL' && data.headers.length >= 3) return 2;
+      if (selectedSubModule === 'REGIONAL' && data.headers.length >= 4) return 3;
+    }
+
+    // 4. Fallback genérico: columna con mayor proporción de valores numéricos
+    if (data.rows && data.rows.length > 0) {
+      let bestCol = -1;
+      let maxNumericCount = 0;
+
+      for (let colIdx = 0; colIdx < data.headers.length; colIdx++) {
+        let numericCount = 0;
+        let totalCount = 0;
+
+        for (const row of data.rows) {
+          if (!row) continue;
+          totalCount++;
+          const val = parseQuantity(row[colIdx]);
+          if (val !== null) {
+            numericCount++;
+          }
+        }
+
+        if (numericCount > maxNumericCount && totalCount > 0 && numericCount / totalCount > 0.3) {
+          maxNumericCount = numericCount;
+          bestCol = colIdx;
+        }
+      }
+
+      if (bestCol !== -1) return bestCol;
+    }
+
+    return -1;
+  }, [data?.headers, data?.rows, selectedModule, selectedSubModule]);
 
   // Filtrar filas: excluir filas de totales/sumas y aplicar el término de búsqueda
   const { filteredRows, criticalCount, lowStockCount, healthyCount } = useMemo(() => {
@@ -130,8 +213,8 @@ export const Dashboard: React.FC = () => {
 
     validRows.forEach((row) => {
       if (quantityColIndex !== -1) {
-        const val = Number(row[quantityColIndex]);
-        if (!isNaN(val)) {
+        const val = parseQuantity(row[quantityColIndex]);
+        if (val !== null) {
           if (val === 0) critical++;
           else if (val >= 1 && val <= 3) low++;
           else healthy++;
@@ -361,8 +444,8 @@ export const Dashboard: React.FC = () => {
                   >
                     {row.map((cell, cIdx) => {
                       const isQtyCol = cIdx === quantityColIndex;
-                      const numVal = Number(cell);
-                      const isNumeric = !isNaN(numVal) && cell !== '' && cell !== null;
+                      const numVal = parseQuantity(cell);
+                      const isNumeric = numVal !== null;
 
                       if (isQtyCol && isNumeric) {
                         // Lógica del semáforo estricto
