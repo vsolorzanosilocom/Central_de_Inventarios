@@ -15,6 +15,7 @@ import { Registro } from './components/Registro';
 import { ToastContainer } from './components/Toast';
 import { InitialDataSources, ToastMessage } from './types';
 import { getInitialData } from './services/api';
+import { preloadAllInventories } from './services/inventoryCache';
 
 export function App() {
   const [currentView, setCurrentView] = useState<'dashboard' | 'registro'>('dashboard');
@@ -67,6 +68,8 @@ export function App() {
     }
 
     loadCatalogsOnce();
+    // Precarga silenciosa en memoria de todos los inventarios en segundo plano
+    preloadAllInventories();
     return () => {
       isMounted = false;
     };

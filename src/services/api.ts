@@ -80,9 +80,10 @@ export async function callApi<T = unknown>(
  */
 export async function getInventoryData(
   module: InventoryModule,
-  subModule: string
+  subModule: string,
+  refresh: boolean = false
 ): Promise<InventoryResponse> {
-  return callApi<InventoryResponse>('getInventoryData', { module, subModule });
+  return callApi<InventoryResponse>('getInventoryData', { module, subModule, refresh });
 }
 
 /**

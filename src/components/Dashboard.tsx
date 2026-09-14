@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { InventoryModule, InventorySubModule, InventoryResponse } from '../types';
-import { getInventoryData } from '../services/api';
+import { getCachedInventory, fetchInventory } from '../services/inventoryCache';
 import { Loader } from './Loader';
 import {
   Package,
@@ -76,12 +76,27 @@ export const Dashboard: React.FC = () => {
     ],
   };
 
-  // Función reutilizable para cargar datos del módulo activo
-  const loadModuleData = async (mod: InventoryModule, subMod: InventorySubModule) => {
+  // Función reutilizable para cargar datos del módulo activo (con soporte para caché en memoria)
+  const loadModuleData = async (
+    mod: InventoryModule,
+    subMod: InventorySubModule,
+    refresh: boolean = false
+  ) => {
+    // Si no es un refresco forzado y existe caché, mostrar inmediatamente sin loader
+    if (!refresh) {
+      const cached = getCachedInventory(mod, subMod);
+      if (cached) {
+        setData(cached);
+        setError(null);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const response = await getInventoryData(mod, subMod);
+      const response = await fetchInventory(mod, subMod, refresh);
       if (response && response.success) {
         setData(response);
       } else {
@@ -316,7 +331,7 @@ export const Dashboard: React.FC = () => {
 
           <button
             id="btn-refresh-inventory"
-            onClick={() => loadModuleData(selectedModule, selectedSubModule)}
+            onClick={() => loadModuleData(selectedModule, selectedSubModule, true)}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors disabled:opacity-50"
             title="Actualizar datos desde Google Sheets"
@@ -409,7 +424,7 @@ export const Dashboard: React.FC = () => {
             <p className="text-rose-700 font-medium text-sm max-w-xl mx-auto">{error}</p>
             <div className="mt-4 flex justify-center">
               <button
-                onClick={() => loadModuleData(selectedModule, selectedSubModule)}
+                onClick={() => loadModuleData(selectedModule, selectedSubModule, true)}
                 className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors flex items-center gap-2"
               >
                 <RefreshCw className="w-3.5 h-3.5" />

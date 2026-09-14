@@ -22,6 +22,30 @@ const SS_IDS = CONFIG_IDS;
 // Token de seguridad compartido para llamadas a la API REST
 const API_TOKEN = "SILOCOM-INV-2026";
 
+// Tiempo de vida de la caché en Google Apps Script (segundos)
+var CACHE_TTL_SECONDS = 30;
+
+/**
+ * Helper para almacenar y recuperar datos cacheados en Google Apps Script.
+ */
+function withInventoryCache(key, buildFn, refresh) {
+  const cache = CacheService.getScriptCache();
+  if (refresh !== true) {
+    try {
+      const cached = cache.get(key);
+      if (cached) return JSON.parse(cached);
+    } catch (err) { /* error de caché: seguir normal */ }
+  }
+  const value = buildFn();
+  try {
+    const serialized = JSON.stringify(value);
+    if (serialized && serialized.length <= 100000) {
+      cache.put(key, serialized, CACHE_TTL_SECONDS);
+    }
+  } catch (err) { /* exceder cuota: no romper la respuesta */ }
+  return value;
+}
+
 /**
  * Helper para responder en formato JSON mediante ContentService.
  */
@@ -61,7 +85,8 @@ function doGet(e) {
     let result;
     switch (action) {
       case "getInventoryData":
-        result = getInventoryData(params.module, params.subModule);
+        const refreshGet = params.refresh === true || params.refresh === "true";
+        result = getInventoryData(params.module, params.subModule, refreshGet);
         break;
       case "getInitialData":
         result = { success: true, data: getInitialData() };
@@ -117,7 +142,8 @@ function doPost(e) {
     let result;
     switch (action) {
       case "getInventoryData":
-        result = getInventoryData(body.module || params.module, body.subModule || params.subModule);
+        const refreshPost = body.refresh === true || body.refresh === "true" || params.refresh === true || params.refresh === "true";
+        result = getInventoryData(body.module || params.module, body.subModule || params.subModule, refreshPost);
         break;
       case "getInitialData":
         result = { success: true, data: getInitialData() };
@@ -149,41 +175,44 @@ function doPost(e) {
  * API Gateway Central: Enruta las peticiones de consulta hacia el extractor correspondiente.
  * @param {string} module Módulo solicitado (CONSUMIBLES, FLOTA, ROUTER, SENSORIZEIT, SIM).
  * @param {string} subModule Subcategoría o almacén.
+ * @param {boolean} refresh Si es true, ignora la caché y lee directamente las hojas.
  * @return {Object} JSON con estado, encabezados y matriz de datos.
  */
-function getInventoryData(module, subModule) {
-  try {
-    if (!CONFIG_IDS[module]) {
-      throw new Error("Módulo solicitado no configurado en el sistema central.");
+function getInventoryData(module, subModule, refresh) {
+  return withInventoryCache("inv:" + module + ":" + subModule, function () {
+    try {
+      if (!CONFIG_IDS[module]) {
+        throw new Error("Módulo solicitado no configurado en el sistema central.");
+      }
+      
+      let result;
+      switch(module) {
+        case "CONSUMIBLES":
+          result = extractConsumiblesData();
+          break;
+        case "FLOTA":
+          result = extractFlotaData(subModule);
+          break;
+        case "ROUTER":
+          result = extractRouterData(subModule);
+          break;
+        case "SENSORIZEIT":
+          result = extractSensorizeitData(subModule);
+          break;
+        case "SIM":
+          result = extractSimData(subModule);
+          break;
+        default:
+          throw new Error("Extractor no implementado para el módulo seleccionado.");
+      }
+      
+      return { success: true, headers: result.headers, rows: result.rows };
+      
+    } catch (error) {
+      Logger.log("Error en módulo " + module + " [" + subModule + "]: " + error.toString());
+      return { success: false, error: error.toString() };
     }
-    
-    let result;
-    switch(module) {
-      case "CONSUMIBLES":
-        result = extractConsumiblesData();
-        break;
-      case "FLOTA":
-        result = extractFlotaData(subModule);
-        break;
-      case "ROUTER":
-        result = extractRouterData(subModule);
-        break;
-      case "SENSORIZEIT":
-        result = extractSensorizeitData(subModule);
-        break;
-      case "SIM":
-        result = extractSimData(subModule);
-        break;
-      default:
-        throw new Error("Extractor no implementado para el módulo seleccionado.");
-    }
-    
-    return { success: true, headers: result.headers, rows: result.rows };
-    
-  } catch (error) {
-    Logger.log("Error en módulo " + module + " [" + subModule + "]: " + error.toString());
-    return { success: false, error: error.toString() };
-  }
+  }, refresh);
 }
 
 /**
@@ -762,6 +791,28 @@ function saveRecord(formType, payload) {
     }
     
     sheet.appendRow(rowData);
+
+    // Invalida la caché al registrar un nuevo activo
+    try {
+      var allCacheKeys = [
+        "inv:CONSUMIBLES:PRINCIPAL",
+        "inv:FLOTA:PRINCIPAL",
+        "inv:FLOTA:REGIONAL",
+        "inv:ROUTER:PRINCIPAL",
+        "inv:ROUTER:REGIONAL",
+        "inv:SENSORIZEIT:PRINCIPAL",
+        "inv:SENSORIZEIT:REGIONAL",
+        "inv:SIM:PRINCIPAL",
+        "inv:SIM:REGIONAL",
+        "inv:SIM:PROPIEDAD"
+      ];
+      CacheService.getScriptCache().removeAll(allCacheKeys);
+    } catch (cErr) {
+      try {
+        CacheService.getScriptCache().removeAll();
+      } catch (err) {}
+    }
+
     return { success: true, message: "Registro guardado exitosamente." };
   } catch (e) {
     return { success: false, message: e.message };
