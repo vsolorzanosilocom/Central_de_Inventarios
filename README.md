@@ -1,87 +1,84 @@
 # Sistema Central de Inventarios y Registros — SILOCOM C.A.
 
-Aplicación web unificada para control de inventarios, disponibilidad en tiempo real y registro de activos corporativos de **SILOCOM C.A.**, desarrollada en **React 19 + TypeScript + Vite + Tailwind CSS** y optimizada para despliegue en **Vercel** con backend desacoplado en **Google Apps Script (GAS)** y Google Sheets en producción.
+Aplicación web para consultar inventarios y registrar activos de SILOCOM C.A. El frontend está desarrollado con React 19, TypeScript, Vite 6 y Tailwind CSS 4. Los datos y las operaciones de registro se comunican directamente con una Web App de Google Apps Script (GAS), que utiliza Google Sheets.
 
----
+## Arquitectura
 
-## 🚀 Guía de Despliegue en Vercel
+- **Frontend:** aplicación React/Vite en `src/`, con vistas de dashboard y registro.
+- **Comunicación:** `src/services/api.ts` envía solicitudes HTTP directamente a GAS. Las acciones y el token de aplicación se envían en la URL y en el cuerpo de las solicitudes POST.
+- **Backend:** `Codigo.gs` es la copia local de referencia del backend de Apps Script; no es una función serverless de Vercel.
+- **Caché:** `src/services/inventoryCache.ts` mantiene una caché en el cliente para inventarios.
+- **Persistencia:** Google Sheets, a través del backend de GAS.
 
-### Paso 1: Configurar el Backend en Google Apps Script
-1. El backend de Google Apps Script ya se encuentra desplegado y verificado en producción:
-   - URL `/exec`: `https://script.google.com/macros/s/AKfycbyvf0H0HZ-7fSrXwNptsedrrx0ZqMK0VlE4rqsERmqNMLCLi6gxNeao7Tewp-Kdbvts/exec`
-   - Token de Seguridad: `SILOCOM-INV-2026`
-2. Si requiere desplegar una nueva versión:
-   - Asegúrese de que en **Implementar > Administrar implementaciones** la configuración sea:
-     - **Ejecutar como (Execute as):** `Yo` (cuenta con acceso a las hojas de cálculo).
-     - **Quién tiene acceso (Who has access):** `Cualquiera` (Anyone).
+## Requisitos y desarrollo local
 
----
+Se requiere Node.js y npm.
 
-### Paso 2: Despliegue en Vercel
-1. Suba este repositorio a su cuenta de **GitHub** o **GitLab**.
-2. Inicie sesión en [Vercel](https://vercel.com) y haga clic en **"Add New Project"** > **"Import Git Repository"**.
-3. En la pantalla de configuración del proyecto:
-   - **Framework Preset:** `Vite`
-   - **Build Command:** `npm run build`
-   - **Output Directory:** `dist`
-   - **Install Command:** `npm install`
-4. Expanda la sección **Environment Variables** y agregue las siguientes variables:
-   - `VITE_GAS_URL`: `https://script.google.com/macros/s/AKfycbyvf0H0HZ-7fSrXwNptsedrrx0ZqMK0VlE4rqsERmqNMLCLi6gxNeao7Tewp-Kdbvts/exec`
-   - `VITE_API_TOKEN`: `SILOCOM-INV-2026`
-5. Haga clic en **Deploy**. La aplicación quedará desplegada con HTTPS, alta disponibilidad y conexión en tiempo real a Google Sheets.
+```bash
+npm install
+```
 
----
+Crea un archivo `.env.local` en la raíz del proyecto con la URL de la Web App de Apps Script:
 
-## 🛠️ Variables de Entorno
+```env
+VITE_GAS_URL=https://script.google.com/macros/s/ID_DE_IMPLEMENTACION/exec
+VITE_API_TOKEN=REEMPLAZAR_POR_EL_TOKEN_CONFIGURADO_EN_GAS
+```
 
-| Variable | Descripción | Ejemplo / Valor en Producción |
-| :--- | :--- | :--- |
-| `VITE_GAS_URL` | URL pública de la Web App de Apps Script (`/exec`) | `https://script.google.com/macros/s/.../exec` |
-| `VITE_API_TOKEN` | Token de seguridad compartido con Apps Script | `SILOCOM-INV-2026` |
+Inicia Vite con:
 
----
+```bash
+npm run dev
+```
 
-## 📦 Estructura del Proyecto
+Vite mostrará la dirección local disponible (normalmente `http://localhost:5173`). Para validar los tipos y compilar:
+
+```bash
+npm run lint
+npm run build
+```
+
+## Despliegue
+
+El frontend se puede desplegar como sitio estático en Vercel u otro proveedor compatible con Vite:
+
+- **Build:** `npm run build`
+- **Directorio de salida:** `dist`
+- **Variables de entorno de compilación:** `VITE_GAS_URL` y `VITE_API_TOKEN`
+
+Configura las mismas variables en el entorno de compilación del proveedor y vuelve a compilar después de cambiarlas. El backend GAS se despliega y administra por separado como una Web App de Apps Script. La cuenta que la ejecuta debe tener acceso a las hojas correspondientes y la política de acceso debe permitir las solicitudes previstas por la aplicación.
+
+No hay una carpeta `api/` ni funciones backend de Vercel en este proyecto. La configuración de Vite tampoco incluye un proxy de API local; el navegador contacta directamente a GAS.
+
+## Estructura principal
 
 ```text
-├── Codigo.gs                # Referencia del backend REST API para Google Apps Script
+├── Codigo.gs
 ├── src/
 │   ├── components/
-│   │   ├── SilocomLogo.tsx  # Wordmark oficial corporativo Silocom (pastilla blanca, sin imágenes externas)
-│   │   ├── Header.tsx       # Barra de navegación navy sticky
-│   │   ├── Footer.tsx       # Pie de página corporativo
-│   │   ├── Dashboard.tsx    # Panel con semáforo de stock (0=rojo, 1-3=amarillo), métricas y nombres originales
-│   │   ├── Registro.tsx     # Formularios limpios sin placeholders (salvo SIM teléfono), 9 campos técnicos en Sensorizeit
-│   │   ├── Toast.tsx        # Sistema de alertas no intrusivas
-│   │   └── Loader.tsx       # Spinner de carga
+│   │   ├── Dashboard.tsx
+│   │   ├── Registro.tsx
+│   │   ├── Header.tsx
+│   │   └── ...
 │   ├── services/
-│   │   └── api.ts           # Cliente HTTP con contrato robusto (token y action en query y body, sin mocks)
-│   ├── types.ts             # Definiciones TypeScript completas
-│   ├── App.tsx              # Componente raíz con caché de catálogos
-│   ├── main.tsx             # Punto de entrada Vite React
-│   └── index.css            # Estilos globales Tailwind CSS
-├── .env.example             # Plantilla de variables de entorno
-├── .env.local               # Configuración local con credenciales de producción
+│   │   ├── api.ts
+│   │   └── inventoryCache.ts
+│   ├── App.tsx
+│   ├── types.ts
+│   ├── main.tsx
+│   └── index.css
 ├── package.json
 └── vite.config.ts
 ```
 
----
+## Configuración y seguridad
 
-## 🛡️ Reglas de Negocio Implementadas
+- `VITE_GAS_URL` debe apuntar a la URL `/exec` de la implementación de GAS.
+- Las variables `VITE_*` se incorporan al JavaScript del navegador durante la compilación. Por tanto, `VITE_API_TOKEN` no es un secreto confidencial; no lo uses como única protección de datos o de operaciones. Si se necesita control de acceso, debe imponerse en el backend con un mecanismo apropiado.
+- No guardes credenciales privadas en el repositorio ni en variables `VITE_*`.
 
-1. **Sin Datos Simulados:** Cero mocks. Si falla la red o el servicio, se muestra el error real de forma explícita.
-2. **Protección de Fórmulas:** Ninguna función sobrescribe celdas calculadas en Google Sheets.
-3. **Contrato HTTP Robusto:** Se envían `action` y `token` tanto en la query string como en el cuerpo POST JSON (`Content-Type: text/plain;charset=utf-8`), evitando bloqueos por preflight CORS y pérdida de cuerpo ante eventuales redirecciones 302.
-4. **Formulario Sensorizeit Completo:** Los 9 campos técnicos (`SERIAL`, `IMEI`, `DEV EUI`, `APP EUI`, `APP KEY`, `APPSKEY`, `NETSKEY`, `AT PIN`, `OTA PIN`) son obligatorios y disponen de su botón "Marcar N/A". El serial "N/A" se excluye de la validación de unicidad.
-5. **Inputs Limpios:** Sin texto fantasma en ningún campo salvo el teléfono de Tarjeta SIM (`58xxxxxxxxxx` con validación `^58\d{10}$`).
-6. **Submódulos Originales del Dashboard:**
-   - **Flota GPS:** Almacén Principal / Almacén Regional.
-   - **Routers:** Almacén Principal / Almacén Regional.
-   - **Sensorizeit:** Almacén Principal (BD Estática) / Almacén Regional.
-   - **Tarjetas SIM:** Almacén Principal / Almacén Regional / Propiedad Silocom totales.
-   - **Consumibles:** Control General.
-7. **Semáforo Visual de Stock:**
-   - `0 unidades` = 🔴 **Crítico**
-   - `1 a 3 unidades` = 🟡 **Bajo**
-   - `> 3 unidades` = 🟢 **Normal**
+## Funcionalidad
+
+- El dashboard presenta inventarios por módulo y submódulo.
+- El formulario permite registrar activos y utiliza los catálogos iniciales obtenidos desde GAS.
+- La interfaz muestra errores de configuración, red y respuesta del servicio; no depende de un backend proxy de Vercel.
